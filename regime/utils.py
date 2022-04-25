@@ -531,9 +531,14 @@ def init_swings(
     i = 1
     initial_price = px.close.iloc[0]
 
+    lvl_limit = 4
+    hi_cols = [f'hi{i}' for i in range(1, lvl_limit + 1)]
+    lo_cols = [f'lo{i}' for i in range(1, lvl_limit + 1)]
+
     lvl1_peaks = historical_swings(px, lvl_limit=4, _h='close', _l='close')
-    hi_peaks = full_peak_lag(lvl1_peaks, ['hi1', 'hi2', 'hi3'])
-    lo_peaks = full_peak_lag(lvl1_peaks, ['lo1', 'lo2', 'lo3'])
+
+    hi_peaks = full_peak_lag(lvl1_peaks, hi_cols)
+    lo_peaks = full_peak_lag(lvl1_peaks, lo_cols)
     peak_table = pd.concat([hi_peaks, lo_peaks]).sort_values(by='end', ascending=True).reset_index(drop=True)
 
     # while True:
