@@ -360,13 +360,20 @@ def hilo_alternation(hilo, dist=None, hurdle=None):
         return hilo
 
 
-def historical_swings(df, _h='high', _l='low', _c='close', round_place=2, lvl_limit=3):
+def historical_swings(df, _h='high', _l='low', _c='close', lvl_limit=3):
     reduction = df[list({_h, _l, _c})].copy()
-    # reduction["avg_px"] = round(reduction[[_h, _l, _c]].mean(axis=1), round_place)
     highs = reduction[_h]
     lows = reduction[_l]
     reduction_target = len(reduction) // 100
-    #     print(reduction_target )
+
+    def init_compare(swings, lvl):
+        compare = pd.DataFrame(columns=['prior', 'sw', 'next'])
+        compare.next = swings.shift(-1)
+        if lvl == 1:
+            swings = swings.loc[swings.shift(-1) != swings]
+        compare.prior = swings.shift(1)
+        compare.sw = swings
+        return compare.dropna()
 
     n = 0
     while len(reduction) >= reduction_target:
@@ -374,26 +381,22 @@ def historical_swings(df, _h='high', _l='low', _c='close', round_place=2, lvl_li
         hi_lvl_col = 'hi' + str(n)
         lo_lvl_col = 'lo' + str(n)
 
-        reduction[hi_lvl_col] = highs.loc[
-            (highs.shift(-1) <= highs) &
-            (highs.shift(1) <= highs)
+        high_compare = init_compare(highs, 1)
+        highs = high_compare.loc[
+            (high_compare.sw > high_compare.prior) &
+            (high_compare.sw > high_compare.next),
+            'sw'
         ]
-        reduction[lo_lvl_col] = lows.loc[
-            (lows.shift(-1) >= lows) &
-            (lows.shift(1) >= lows)
+        low_compare = init_compare(lows, 1)
+        lows = low_compare.loc[
+            (low_compare.sw < low_compare.prior) &
+            (low_compare.sw < low_compare.next),
+            'sw'
         ]
 
         # Populate main dataframe
-        df[hi_lvl_col] = reduction[hi_lvl_col]
-        df[lo_lvl_col] = reduction[lo_lvl_col]
-
-        # Reduce reduction
-        hi_notna_q = reduction[hi_lvl_col].notna()
-        lo_notna_q = reduction[lo_lvl_col].notna()
-        reduction = reduction.loc[hi_notna_q | lo_notna_q]
-        # reduction = reduction.fillna(method="ffill")
-        highs = reduction.loc[hi_notna_q, hi_lvl_col]
-        lows = reduction.loc[lo_notna_q, lo_lvl_col]
+        df[hi_lvl_col] = highs
+        df[lo_lvl_col] = lows
 
         if n >= lvl_limit:
             break
@@ -444,7 +447,8 @@ def full_peak_lag(df, asc_peaks) -> pd.DataFrame:
                 'st_px': df.loc[peaks.index, 'close'],
             }
         )
-        peak_table = peak_table.merge(right=lower_level_peaks, how='left', on=['start']).astype(dtype='int')
+        peak_table = peak_table.merge(right=lower_level_peaks, how='left', on=['start'])
+        peak_table.end = peak_table.end.astype(dtype='int')
         peak_table['en_px'] = df.loc[peak_table.end, 'close'].values
         peak_tables.append(peak_table)
         lower_level_peaks = peak_tables[-1][['start', 'end']].copy()
@@ -500,86 +504,21 @@ def init_swings(
     :param lvl_limit:
     :return:
     """
-    sw_list = []
-
     px = df[['close', 'high', 'low']].copy()
     px['avg_px'] = df[['high', 'low', 'close']].mean(axis=1)
-
-    # sw_hi_params = BaseSwingParams(_atr, _px.avg_px, -1)
-    # sw_lo_params = BaseSwingParams(_atr, _px.avg_px, 1)
-    vlty_mult = {3: 5, 2: 2.5, 1: 1}
-    retrace_mult = {
-        3: vlty_mult[3]/2,
-        2: vlty_mult[2]/2,
-        1: vlty_mult[1]/2
-    }
-    retrace_pcts = {
-        3: retrace_pct,
-        2: retrace_pct/2,
-        1: retrace_pct/4
-    }
-    dist_pcts = {
-        3: dist_pct,
-        2: dist_pct/2,
-        1: dist_pct/4
-    }
-    vlty_windows = {
-        3: n_num,
-        2: n_num//2,
-        1: n_num//4
-    }
-    i = 1
-    initial_price = px.close.iloc[0]
 
     lvl_limit = 4
     hi_cols = [f'hi{i}' for i in range(1, lvl_limit + 1)]
     lo_cols = [f'lo{i}' for i in range(1, lvl_limit + 1)]
 
     lvl1_peaks = historical_swings(px, lvl_limit=4, _h='close', _l='close')
+    if len(lvl1_peaks.hi3.dropna()) == 0 or len(lvl1_peaks.lo3.dropna()) == 0:
+        raise NotEnoughDataError
 
     hi_peaks = full_peak_lag(lvl1_peaks, hi_cols)
     lo_peaks = full_peak_lag(lvl1_peaks, lo_cols)
     peak_table = pd.concat([hi_peaks, lo_peaks]).sort_values(by='end', ascending=True).reset_index(drop=True)
 
-    # while True:
-    #     vlty_window = vlty_windows[i]
-    #     atr = average_true_range(df, vlty_window)
-    #     swings_init = {
-    #         'atr': atr,
-    #         'price': px.close,
-    #         # 'sw_type',
-    #         'dist_vlty_mult': vlty_mult[i],
-    #         'retrace_vlty_mult': retrace_mult[i],
-    #         'dist_pct': dist_pcts[i],
-    #         'retrace_pct': retrace_pcts[i]
-    #     }
-    #
-    #     if i != 3:
-    #         sw_hi_params = BaseSwingParams(sw_type=-1, **swings_init)
-    #         sw_lo_params = BaseSwingParams(sw_type=1, **swings_init)
-    #     else:
-    #         sw_hi_params = DerivedSwingParams(retest_peaks=df['lo1'], sw_type=-1, **swings_init)
-    #         sw_lo_params = DerivedSwingParams(retest_peaks=df['hi1'], sw_type=1, **swings_init)
-    #
-    #     _px = px.loc[sw_hi_params._base_price.first_valid_index():]
-    #
-    #     swings = volatility_swings(px, _px, sw_hi_params, sw_lo_params, initial_price)
-    #     swings['lvl'] = i
-    #     swings['st_px'] = pda.PeakTable(swings).start_price(df)
-    #     swings['en_px'] = pda.PeakTable(swings).end_price(df)
-    #
-    #     sw_hi, sw_lo = DerivedSwingParams.swing_to_raw_peaks(swings)
-    #
-    #     df[f'hi{i}'] = sw_hi
-    #     df[f'lo{i}'] = sw_lo
-    #
-    #     sw_list.append(swings)
-    #     _prior_swings = swings
-    #
-    #     if i == lvl:
-    #         break
-    #     i += 1
-    # peak_table = pd.concat(sw_list).sort_values(by='start', ascending=True).reset_index(drop=True)
     return px, peak_table
 
 
@@ -777,7 +716,7 @@ def regime_floor_ceiling(
 
     fc_find_floor = hof_find_fc(
         df=df,
-        price_col=_l,
+        price_col='close',
         extreme_func='min',
         stdev=stdev,
         sw_type=1,
@@ -785,7 +724,7 @@ def regime_floor_ceiling(
     )
     fc_find_ceiling = hof_find_fc(
         df=df,
-        price_col=_h,
+        price_col='close',
         extreme_func='max',
         stdev=stdev,
         sw_type=-1,

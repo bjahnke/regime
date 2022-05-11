@@ -2,7 +2,7 @@ from setuptools import setup
 
 setup(
     name='regime',
-    version='0.0.0.4',
+    version='0.0.0.5',
     packages=['regime'],
     url='',
     license='',
