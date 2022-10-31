@@ -315,6 +315,126 @@ class DerivedSwingParams(BaseSwingParams):
     #     return res
 
 
+class LatestSwingData:
+    def __init__(
+            self,
+            ud,  # direction +1up, -1down
+            base_sw,  # base, swing hi/lo
+            bs_dt,  # swing date
+            _rt,  # series name used to detect swing, rt_lo for swing hi, rt_hi for swing lo
+            sw_col,  # series to assign the value, shi for swing hi, slo for swing lo
+            hh_ll,  # lowest low or highest high
+            hh_ll_dt,  # date of hh_ll
+            price_col,
+    ):
+        self.ud = ud
+
+        if self.ud == 1:
+            extreme = 'max'
+            cum_extreme = 'min'
+        else:
+            extreme = 'min'
+            cum_extreme = 'max'
+
+        self.idx_extreme_f = f'idx{extreme}'
+        self.extreme_f = f'{extreme}'
+        self.cum_extreme_f = f'cum{cum_extreme}'
+
+        self.base_sw = base_sw
+        self.bs_dt = bs_dt
+        self.rt = _rt
+        self.sw_col = sw_col
+        self.extreme_val = hh_ll
+        self.extreme_date = hh_ll_dt
+        self.price_col = price_col
+
+    @classmethod
+    def init_from_latest_swing(cls, df, shi='hi3', slo='lo3', rt_hi='hi1', rt_lo='lo1', _h='high', _l='low', _c='close'):
+        shi_query = pd.notnull(df[shi])
+        slo_query = pd.notnull(df[slo])
+        try:
+            # get that latest swing hi/lo dates
+            sw_hi_date = df.loc[shi_query, shi].index[-1]
+            sw_lo_date = df.loc[slo_query, slo].index[-1]
+        except IndexError:
+            raise NotEnoughDataError
+
+        if sw_lo_date > sw_hi_date:
+            # swing low date is more recent
+            s_lo = df.loc[slo_query, slo][-1]
+            swg_var = cls(
+                ud=1,
+                base_sw=s_lo,
+                bs_dt=sw_lo_date,
+                _rt=rt_lo,
+                sw_col=shi,
+                hh_ll=df.loc[sw_lo_date:, _h].max(),
+                hh_ll_dt=df.loc[sw_lo_date:, _h].idxmax(),
+                price_col='high'
+            )
+        #  (shi_dt > slo_dt) assuming that shi_dt == slo_dt is impossible
+        else:
+            s_hi = df.loc[shi_query, shi][-1]
+            swg_var = cls(
+                ud=-1,
+                base_sw=s_hi,
+                bs_dt=sw_hi_date,
+                _rt=rt_hi,
+                sw_col=slo,
+                hh_ll=df.loc[sw_hi_date:, _l].min(),
+                hh_ll_dt=df.loc[sw_hi_date:, _l].idxmin(),
+                price_col='low'
+            )
+        return swg_var
+
+    def test_distance(self, dist_vol, dist_pct):
+        return test_distance(
+            base_sw_val=self.base_sw,
+            hh_ll=self.extreme_val,
+            dist_vol=dist_vol,
+            dist_pct=dist_pct
+        )
+
+    def retest_swing(self, df):
+        return retest_swing(
+            df=df,
+            ud=self.ud,
+            _rt=self.rt,
+            hh_ll_dt=self.extreme_date,
+            hh_ll=self.extreme_val,
+            _swg=self.sw_col,
+            idx_extreme_f=self.idx_extreme_f,
+            extreme_f=self.extreme_f,
+            cum_extreme_f=self.cum_extreme_f
+        )
+
+    def retrace_swing(self, df, vlty, retrace_vol, retrace_pct):
+        return retrace_swing(
+            df=df,
+            ud=self.ud,
+            _swg=self.sw_col,
+            hh_ll_dt=self.extreme_date,
+            hh_ll=self.extreme_val,
+            vlty=vlty,
+            retrace_vol=retrace_vol,
+            retrace_pct=retrace_pct,
+        )
+
+    def volatility_swing(self, df, dist_pct, vlty, retrace_pct, retrace_vol_mult=2.5, dist_vol_mult=5):
+        """detect last swing via volatility test"""
+        dist_vol = vlty * dist_vol_mult
+        res = self.test_distance(dist_vol, dist_pct)
+        if res is True:
+            retrace_vol = vlty * retrace_vol_mult
+            df = self.retest_swing(df)
+            df = self.retrace_swing(df, vlty=vlty, retrace_vol=retrace_vol, retrace_pct=retrace_pct)
+        return df
+
+    def retest(self):
+        """apply retest stuff"""
+        pass
+
+
 def hilo_alternation(hilo, dist=None, hurdle=None):
     i = 0
     while (
