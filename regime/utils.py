@@ -625,13 +625,13 @@ def init_swings(
     :return:
     """
     px = df[['close', 'high', 'low']].copy()
-    px['avg_px'] = df[['high', 'low', 'close']].mean(axis=1)
+    px['avg_px'] = df[['high', 'low', 'close']].mean(axis=1).reset_index(drop=True)
 
     lvl_limit = 4
     hi_cols = [f'hi{i}' for i in range(1, lvl_limit + 1)]
     lo_cols = [f'lo{i}' for i in range(1, lvl_limit + 1)]
 
-    lvl1_peaks = historical_swings(px, lvl_limit=4, _h='close', _l='close')
+    lvl1_peaks = historical_swings(px, lvl_limit=4, _h='close', _l='close').reset_index(drop=True)
     if len(lvl1_peaks.hi3.dropna()) == 0 or len(lvl1_peaks.lo3.dropna()) == 0:
         raise NotEnoughDataError
 
