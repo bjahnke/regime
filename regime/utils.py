@@ -831,7 +831,7 @@ def regime_floor_ceiling(
 
     _hi_lo_table = pd.DataFrame(
         data={'hi': _sw_hi_peak_table.start, 'lo': _sw_lo_peak_table.start}
-    ).ffill().backfill().reset_index(drop=True)
+    ).ffill().bfill().reset_index(drop=True)
 
 
     fc_find_floor = hof_find_fc(
