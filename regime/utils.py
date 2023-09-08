@@ -1012,7 +1012,7 @@ def regime_floor_ceiling(
     df.loc[floors_data.fc_date, flr] = floors_data.fc_val.values
     df.loc[ceilings_data.fc_date, clg] = ceilings_data.fc_val.values
     df.loc[fc_data.rg_ch_date, rg_ch] = fc_data.rg_ch_val.values
-    df[rg_ch] = df[rg_ch].fillna(method="ffill")
+    df[rg_ch] = df[rg_ch].ffill()
 
     # regime from last swing
     if latest_swing_data is not None:
@@ -1026,7 +1026,7 @@ def regime_floor_ceiling(
                 np.nan
             ),
         )
-    df[rg] = df[rg].fillna(method="ffill")
+    df[rg] = df[rg].ffill()
     #     #     df[rg+'_no_fill'] = df[rg]
     return df
 
