@@ -1,5 +1,5 @@
 
 # install
 ```
-pip install git+https://github.com/username/repo.git
+pip install git@github.com:bjahnke/regime.git
 ```
